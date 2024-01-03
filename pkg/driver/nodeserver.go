@@ -40,19 +40,23 @@ type nodeServer struct {
 	*csicommon.DefaultNodeServer
 }
 
-func getMeta(bucketName, prefix string, context map[string]string) *s3.FSMeta {
+func getMeta(bucketName, prefix string, context map[string]string, mountFlags []string) *s3.FSMeta {
 	mountOptions := make([]string, 0)
-	mountOptStr := context[mounter.OptionsKey]
-	if mountOptStr != "" {
-		re, _ := regexp.Compile(`([^\s"]+|"([^"\\]+|\\")*")+`)
-		re2, _ := regexp.Compile(`"([^"\\]+|\\")*"`)
-		re3, _ := regexp.Compile(`\\(.)`)
-		for _, opt := range re.FindAll([]byte(mountOptStr), -1) {
-			// Unquote options
-			opt = re2.ReplaceAllFunc(opt, func(q []byte) []byte {
-				return re3.ReplaceAll(q[1:len(q)-1], []byte("$1"))
-			})
-			mountOptions = append(mountOptions, string(opt))
+	if len(mountFlags) > 0 {
+		mountOptions = append(mountOptions, mountFlags...)
+	} else {
+		mountOptStr := context[mounter.OptionsKey]
+		if mountOptStr != "" {
+			re, _ := regexp.Compile(`([^\s"]+|"([^"\\]+|\\")*")+`)
+			re2, _ := regexp.Compile(`"([^"\\]+|\\")*"`)
+			re3, _ := regexp.Compile(`\\(.)`)
+			for _, opt := range re.FindAll([]byte(mountOptStr), -1) {
+				// Unquote options
+				opt = re2.ReplaceAllFunc(opt, func(q []byte) []byte {
+					return re3.ReplaceAll(q[1:len(q)-1], []byte("$1"))
+				})
+				mountOptions = append(mountOptions, string(opt))
+			}
 		}
 	}
 	capacity, _ := strconv.ParseInt(context["capacity"], 10, 64)
@@ -96,7 +100,8 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize S3 client: %s", err)
 		}
-		meta := getMeta(bucketName, prefix, req.VolumeContext)
+		meta := getMeta(bucketName, prefix, req.VolumeContext,
+			req.GetVolumeCapability().GetMount().GetMountFlags())
 		mounter, err := mounter.New(meta, s3.Config)
 		if err != nil {
 			return nil, err
@@ -114,7 +119,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
-	// TODO: Implement readOnly & mountFlags
+	// TODO: Implement readOnly
 	readOnly := req.GetReadonly()
 	mountFlags := req.GetVolumeCapability().GetMount().GetMountFlags()
 	attrib := req.GetVolumeContext()
@@ -190,7 +195,8 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, fmt.Errorf("failed to initialize S3 client: %s", err)
 	}
 
-	meta := getMeta(bucketName, prefix, req.VolumeContext)
+	meta := getMeta(bucketName, prefix, req.VolumeContext,
+		req.GetVolumeCapability().GetMount().GetMountFlags())
 	mounter, err := mounter.New(meta, client.Config)
 	if err != nil {
 		return nil, err
