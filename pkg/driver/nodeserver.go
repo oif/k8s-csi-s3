@@ -23,9 +23,9 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/golang/glog"
 	"github.com/yandex-cloud/k8s-csi-s3/pkg/mounter"
 	"github.com/yandex-cloud/k8s-csi-s3/pkg/s3"
-	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -50,7 +50,7 @@ func getMeta(bucketName, prefix string, context map[string]string) *s3.FSMeta {
 		for _, opt := range re.FindAll([]byte(mountOptStr), -1) {
 			// Unquote options
 			opt = re2.ReplaceAllFunc(opt, func(q []byte) []byte {
-				return re3.ReplaceAll(q[1 : len(q)-1], []byte("$1"))
+				return re3.ReplaceAll(q[1:len(q)-1], []byte("$1"))
 			})
 			mountOptions = append(mountOptions, string(opt))
 		}
@@ -69,7 +69,8 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	volumeID := req.GetVolumeId()
 	targetPath := req.GetTargetPath()
 	stagingTargetPath := req.GetStagingTargetPath()
-
+	glog.V(4).Infof("s3: volume %s requested to be published to targetPath(%s) stagingTargetPath(%s)",
+		volumeID, targetPath, stagingTargetPath)
 	// Check arguments
 	if req.GetVolumeCapability() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
@@ -138,6 +139,8 @@ func (ns *nodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	volumeID := req.GetVolumeId()
 	targetPath := req.GetTargetPath()
 
+	glog.V(4).Infof("s3: volume %s requested to be unpublished from %s", volumeID, targetPath)
+
 	// Check arguments
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
@@ -158,6 +161,9 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volumeID := req.GetVolumeId()
 	stagingTargetPath := req.GetStagingTargetPath()
 	bucketName, prefix := volumeIDToBucketPrefix(volumeID)
+
+	glog.V(4).Infof("s3: volume %s requested to be staged to %s (bucket %s, prefix %s)",
+		volumeID, stagingTargetPath, bucketName, prefix)
 
 	// Check arguments
 	if len(volumeID) == 0 {
@@ -199,6 +205,7 @@ func (ns *nodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	stagingTargetPath := req.GetStagingTargetPath()
+	glog.V(4).Infof("s3: volume %s requested to be unstage from %s", volumeID, stagingTargetPath)
 
 	// Check arguments
 	if len(volumeID) == 0 {
