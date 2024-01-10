@@ -26,12 +26,12 @@ type Mounter interface {
 }
 
 const (
-	s3fsMounterType     = "s3fs"
-	geesefsMounterType  = "geesefs"
-	rcloneMounterType   = "rclone"
-	TypeKey             = "mounter"
-	BucketKey           = "bucket"
-	OptionsKey          = "options"
+	s3fsMounterType    = "s3fs"
+	geesefsMounterType = "geesefs"
+	rcloneMounterType  = "rclone"
+	TypeKey            = "mounter"
+	BucketKey          = "bucket"
+	OptionsKey         = "options"
 )
 
 // New returns a new mounter depending on the mounterType parameter
@@ -73,8 +73,10 @@ func fuseMount(path string, command string, args []string, envs []string) error 
 }
 
 func Unmount(path string) error {
-	if err := mount.New("").Unmount(path); err != nil {
-		return err
+	mounter := mount.New("")
+	// Cleanup the mount point
+	if err := mount.CleanupMountPoint(path, mounter, false); err != nil {
+		return fmt.Errorf("failed to cleanup the mount point %q: %v", path, err)
 	}
 	return nil
 }
@@ -86,8 +88,8 @@ func SystemdUnmount(volumeID string) (bool, error) {
 		return false, err
 	}
 	defer conn.Close()
-	unitName := "geesefs-"+systemd.PathBusEscape(volumeID)+".service"
-	units, err := conn.ListUnitsByNames([]string{ unitName })
+	unitName := "geesefs-" + systemd.PathBusEscape(volumeID) + ".service"
+	units, err := conn.ListUnitsByNames([]string{unitName})
 	glog.Errorf("Got %v", units)
 	if err != nil {
 		glog.Errorf("Failed to list systemd unit by name %v: %v", unitName, err)
