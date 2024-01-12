@@ -14,7 +14,7 @@ import (
 	systemd "github.com/coreos/go-systemd/v22/dbus"
 	"github.com/golang/glog"
 	"github.com/mitchellh/go-ps"
-	"k8s.io/kubernetes/pkg/util/mount"
+	mountutils "k8s.io/mount-utils"
 
 	"github.com/yandex-cloud/k8s-csi-s3/pkg/s3"
 )
@@ -73,12 +73,15 @@ func fuseMount(path string, command string, args []string, envs []string) error 
 }
 
 func Unmount(path string) error {
-	mounter := mount.New("")
-	// Cleanup the mount point
-	if err := mount.CleanupMountPoint(path, mounter, false); err != nil {
-		return fmt.Errorf("failed to cleanup the mount point %q: %v", path, err)
+	var err error
+	m := mountutils.New("")
+	forceUnmounter, ok := m.(mountutils.MounterForceUnmounter)
+	if ok {
+		err = mountutils.CleanupMountWithForce(path, forceUnmounter, true, time.Minute)
+	} else {
+		err = mountutils.CleanupMountPoint(path, m, true)
 	}
-	return nil
+	return err
 }
 
 func SystemdUnmount(volumeID string) (bool, error) {
@@ -103,7 +106,7 @@ func SystemdUnmount(volumeID string) (bool, error) {
 }
 
 func FuseUnmount(path string) error {
-	if err := mount.New("").Unmount(path); err != nil {
+	if err := Unmount(path); err != nil {
 		return err
 	}
 	// as fuse quits immediately, we will try to wait until the process is done
@@ -124,11 +127,11 @@ func waitForMount(path string, timeout time.Duration) error {
 	var elapsed time.Duration
 	var interval = 10 * time.Millisecond
 	for {
-		notMount, err := mount.New("").IsNotMountPoint(path)
+		isMountPoint, err := mountutils.New("").IsMountPoint(path)
 		if err != nil {
 			return err
 		}
-		if !notMount {
+		if isMountPoint {
 			return nil
 		}
 		time.Sleep(interval)
