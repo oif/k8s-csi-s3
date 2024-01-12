@@ -31,7 +31,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/kubernetes/pkg/util/mount"
+	mountutils "k8s.io/mount-utils"
 
 	csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"
 )
@@ -234,6 +234,10 @@ func (ns *nodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	}
 	if !exists {
 		err = mounter.FuseUnmount(stagingTargetPath)
+		if err != nil {
+			glog.Errorf("Failed to unmount fuse(%s): %v", stagingTargetPath, err)
+			return nil, err
+		}
 	}
 	glog.V(4).Infof("s3: volume %s has been unmounted from stage path %v.", volumeID, stagingTargetPath)
 
@@ -263,7 +267,7 @@ func (ns *nodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 }
 
 func checkMount(targetPath string) (bool, error) {
-	notMnt, err := mount.New("").IsLikelyNotMountPoint(targetPath)
+	notMnt, err := mountutils.New("").IsLikelyNotMountPoint(targetPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			if err = os.MkdirAll(targetPath, 0750); err != nil {
